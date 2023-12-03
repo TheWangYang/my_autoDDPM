@@ -1,3 +1,13 @@
+# 增加忽略的文件
+projects/autoddpm/images/
+projects/autoddpm/weights/
+wandb/
+
+data/mvtec/
+
+
+
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

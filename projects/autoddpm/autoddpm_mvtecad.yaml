@@ -1,0 +1,132 @@
+name: AutoDDPM
+target_size: !!python/tuple &target_size [128, 128]
+train_batch_size: &tbatch_size 16
+downstream_batch_size: &dbatch_size 16
+checkpoint_path: &checkpoint_path ./projects/autoddpm/weights/runs/
+
+#
+# Experiment
+#
+experiment:
+  name: DDPM
+  task: evaluation # train
+  # 指定weights位置
+  weights: ./projects/autoddpm/weights/runs/2023_12_02_05_29_40_138095/latest_model.pt
+
+device: gpu
+configurator:
+  module_name: core.Configurator
+  class_name: DLConfigurator
+  params:
+#
+# Model
+#
+model:
+  module_name: model_zoo.ddpm
+  class_name: DDPM
+  params:
+    spatial_dims: 2
+    in_channels: 1
+    out_channels: 1
+    num_channels:
+      - 128
+      - 256
+      - 256
+    attention_levels:
+      - False
+      - True
+      - True
+    num_res_blocks: 1
+    num_head_channels: 256
+
+    # Scheduling and noising scheme
+    train_scheduler: "ddpm"
+    inference_scheduler: "ddpm"
+    inference_steps: 1000
+    noise_level_recon: 200
+    noise_level_inpaint: 50
+    noise_type: "gaussian"
+    prediction_type: "epsilon"
+    resample_steps: 5
+    masking_threshold: 0.03 # 初始值为：0.13
+
+    # Thresholds on stroke data: 71, 570
+    threshold_low: 1
+    threshold_high: 10000
+
+    # 在评估的时候存放结果图像路径
+    image_path: "./projects/autoddpm/images/autoddpm_200_50_5_013"
+
+#
+# Trainer
+#
+trainer:
+  module_name: projects.autoddpm.Trainer
+  class_name: PTrainer
+  params:
+    input_size: *target_size
+    checkpoint_path: *checkpoint_path
+    batch_size: *tbatch_size
+    nr_epochs: 999
+    val_interval: 50
+    # Loss
+    loss:
+      module_name: optim.losses.ln_losses
+      class_name: L2
+      params:
+    optimizer_params:
+      lr: 1.0e-4
+  # Data Loader
+  data_loader:
+    # MVTec AD
+    module_name: core.DataLoader
+    class_name: DefaultDataLoader
+    params:
+      args:
+        file_type: "*.png"
+        target_size: *target_size
+        batch_size: *tbatch_size
+        dataset_module:
+          module_name: data.loaders.mvtecad_loader
+          class_name: MVTecADLoader
+        data_dir:
+          train:
+            - "./data/mvtec/bottle/train/good/"
+
+          test:
+            - "./data/mvtec/bottle/test/broken_large/"
+
+# Downstream tasks
+# 下游模型评估pipeline
+downstream_tasks:
+  # 定义本次任务的名称为detection
+  detection:
+    module_name: projects.autoddpm.DownstreamEvaluator
+    class_name: PDownstreamEvaluator
+
+    checkpoint_path: *checkpoint_path
+
+    global_detection: True
+
+    data_loader:
+      module_name: core.DataLoader
+      class_name: DefaultDataLoader
+
+      params:
+        args:
+          file_type: "*.png"
+          target_size: *target_size
+          batch_size: *dbatch_size
+          dataset_module:
+            module_name: data.loaders.mvtecad_loader
+            class_name: MVTecADLoader
+
+      datasets:
+        mvtec:
+          data_dir:
+            test:
+              - "./data/mvtec/bottle/test/broken_large/"
+
+          label_dir:
+            test:
+              - "./data/mvtec/bottle/ground_truth/broken_large/"
